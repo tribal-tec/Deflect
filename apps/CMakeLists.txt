@@ -5,6 +5,10 @@
 
 add_subdirectory(DesktopStreamer)
 
+if(Qt5Qml_FOUND AND Qt5Quick_FOUND AND Qt5Quick_VERSION VERSION_GREATER 5.3)
+  add_subdirectory(QmlStreamer)
+endif()
+
 if(GLUT_FOUND)
   add_subdirectory(SimpleStreamer)
 endif()

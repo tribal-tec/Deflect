@@ -61,6 +61,8 @@ StreamPrivate::StreamPrivate( Stream* stream, const std::string &name_,
     , _parent( stream )
     , _sendWorker( 0 )
 {
+    qRegisterMetaType< MessageHeader >( "MessageHeader" );
+
     imageSegmenter.setNominalSegmentDimensions( SEGMENT_SIZE, SEGMENT_SIZE );
 
     if( name.empty( ))
@@ -68,8 +70,10 @@ StreamPrivate::StreamPrivate( Stream* stream, const std::string &name_,
 
     if( socket.isConnected( ))
     {
-        connect( &socket, SIGNAL( disconnected( )),
-                 this, SLOT( _onDisconnected( )));
+        connect( &socket, &Socket::disconnected,
+                 this, &StreamPrivate::_onDisconnected );
+        connect( this, &StreamPrivate::sendMessage,
+                 this, &StreamPrivate::_onSendMessage, Qt::QueuedConnection );
         const MessageHeader mh( MESSAGE_TYPE_PIXELSTREAM_OPEN, 0, name );
         socket.send( mh, QByteArray( ));
     }
@@ -125,7 +129,7 @@ bool StreamPrivate::sendPixelStreamSegment( const Segment& segment )
     // Create message header
     const uint32_t segmentSize( sizeof( SegmentParameters ) +
                                 segment.imageData.size( ));
-    MessageHeader mh( MESSAGE_TYPE_PIXELSTREAM, segmentSize, name );
+    const MessageHeader mh( MESSAGE_TYPE_PIXELSTREAM, segmentSize, name );
 
     // This byte array will hold the message to be sent over the socket
     QByteArray message;
@@ -137,8 +141,10 @@ bool StreamPrivate::sendPixelStreamSegment( const Segment& segment )
     // Message payload part 2: image data
     message.append( segment.imageData );
 
-    QMutexLocker locker( &socketLock );
-    return socket.send( mh, message );
+    //QMutexLocker locker( &socketLock );
+    sendMessage( mh, message );
+    return true;
+    //return socket.send( mh, message );
 }
 
 bool StreamPrivate::sendCommand( const QString& command )
@@ -156,6 +162,12 @@ void StreamPrivate::_onDisconnected()
 {
     if( _parent )
         _parent->disconnected();
+}
+
+bool StreamPrivate::_onSendMessage( MessageHeader mh, QByteArray message )
+{
+    QMutexLocker locker( &socketLock );
+    return socket.send( mh, message );
 }
 
 }

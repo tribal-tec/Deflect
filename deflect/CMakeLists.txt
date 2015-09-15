@@ -84,4 +84,3 @@ if(DEFLECT_USE_SERVUS)
 endif()
 
 common_library(Deflect)
-

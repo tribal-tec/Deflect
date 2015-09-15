@@ -130,8 +130,12 @@ public:
     /** Protect concurrent send & receive on the QTcpSocket */
     QMutex socketLock;
 
+signals:
+    bool sendMessage( MessageHeader, QByteArray );
+
 private slots:
     void _onDisconnected();
+    bool _onSendMessage( MessageHeader, QByteArray );
 
 private:
     Stream* _parent;

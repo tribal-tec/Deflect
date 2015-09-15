@@ -58,19 +58,8 @@ Socket::Socket( const std::string &hostname, const unsigned short port )
     : _socket( new QTcpSocket( ))
     , _remoteProtocolVersion( INVALID_NETWORK_PROTOCOL_VERSION )
 {
-    // disable message during connect() which happens if no QCoreApplication is
-    // present: QObject::connect: Cannot connect (null)::destroyed() to
-    // QHostInfoLookupManager::waitForThreadPoolDone()
-    QLoggingCategory* log = QLoggingCategory::defaultCategory();
-    const bool warnEnabled = log->isWarningEnabled();
-    log->setEnabled( QtWarningMsg, false );
-
     if( !_connect( hostname, port ))
-    {
-        std::cerr << "could not connect to host " << hostname << ":" <<  port
-                  << std::endl;
-    }
-    log->setEnabled( QtWarningMsg, warnEnabled );
+        return;
 
     QObject::connect( _socket, SIGNAL( disconnected( )),
                       this, SIGNAL( disconnected( )));
@@ -186,8 +175,17 @@ bool Socket::_connect( const std::string& hostname, const unsigned short port )
     // make sure we're disconnected
     _socket->disconnectFromHost();
 
+    // disable message during connectToHost() which happens if no
+    // QCoreApplication is present: QObject::connect: Cannot connect
+    // (null)::destroyed() to QHostInfoLookupManager::waitForThreadPoolDone()
+    QLoggingCategory* log = QLoggingCategory::defaultCategory();
+    const bool warnEnabled = log->isWarningEnabled();
+    log->setEnabled( QtWarningMsg, false );
+
     // open connection
     _socket->connectToHost( hostname.c_str(), port );
+
+    log->setEnabled( QtWarningMsg, warnEnabled );
 
     if( !_socket->waitForConnected( RECEIVE_TIMEOUT_MS ))
     {
