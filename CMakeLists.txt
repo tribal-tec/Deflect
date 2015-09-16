@@ -11,8 +11,8 @@ list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/CMake
 include(GitExternal)
 
 set(VERSION_MAJOR "0")
-set(VERSION_MINOR "7")
-set(VERSION_PATCH "2")
+set(VERSION_MINOR "8")
+set(VERSION_PATCH "0")
 set(VERSION_ABI 1)
 
 set(DEFLECT_DESCRIPTION "A fast C++ library for streaming pixels and events")
@@ -28,11 +28,16 @@ common_package(OpenGL)
 common_package(Qt5Concurrent REQUIRED SYSTEM)
 common_package(Qt5Core REQUIRED)
 common_package(Qt5Network REQUIRED)
+common_package(Qt5Qml)
+common_package(Qt5Quick)
 common_package(Qt5Widgets REQUIRED)
 common_package(Servus)
 common_package_post()
 
 add_subdirectory(deflect)
+if(Qt5Qml_FOUND AND Qt5Quick_FOUND AND Qt5Quick_VERSION VERSION_GREATER 5.3)
+  add_subdirectory(deflectQml)
+endif()
 
 add_subdirectory(apps)
 add_subdirectory(tests)

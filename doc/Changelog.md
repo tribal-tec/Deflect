@@ -1,6 +1,14 @@
 Changelog {#Changelog}
 ============
 
+## Deflect 0.8
+
+### 0.8.0 (17-09-2015)
+
+* Fix warnings about QSocketNotifier
+* Add DeflectQml library to create QML applications which render offscreen
+  and stream and receive events via Deflect
+
 ## Deflect 0.7
 
 ### 0.7.2 (03-09-2015)
