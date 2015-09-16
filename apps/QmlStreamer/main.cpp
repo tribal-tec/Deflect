@@ -37,7 +37,7 @@
 /* or implied, of The University of Texas at Austin.                 */
 /*********************************************************************/
 
-#include "QmlStreamer.h"
+#include <deflect/QmlStreamer.h>
 
 int main( int argc, char** argv )
 {

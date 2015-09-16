@@ -83,4 +83,12 @@ if(DEFLECT_USE_SERVUS)
   list(APPEND DEFLECT_LINK_LIBRARIES Servus)
 endif()
 
+if(Qt5Qml_FOUND AND Qt5Quick_FOUND AND Qt5Quick_VERSION VERSION_GREATER 5.3)
+  list(APPEND DEFLECT_MOC_PUBLIC_HEADERS QmlStreamer.h)
+  list(APPEND DEFLECT_MOC_HEADERS EventHandler.h)
+  list(APPEND DEFLECT_SOURCES EventHandler.cpp QmlStreamer.cpp)
+  list(APPEND DEFLECT_LINK_LIBRARIES
+    PUBLIC Qt5::Gui  PRIVATE Qt5::Qml Qt5::Quick)
+endif()
+
 common_library(Deflect)

@@ -315,8 +315,6 @@ void QmlStreamer::_setupRootItem()
     // The root item is ready. Associate it with the window.
     _rootItem->setParentItem( _quickWindow->contentItem( ));
 
-   // connect( _rootItem, SIGNAL(pressed(int)), this, SLOT(onButtonPressed(int)));
-
     // Update item and rendering related geometries.
     _updateSizes();
 
