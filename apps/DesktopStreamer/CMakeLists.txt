@@ -3,15 +3,10 @@
 #                     Raphael Dumusc <raphael.dumusc@epfl.ch>
 
 set(DESKTOPSTREAMER_MOC_HEADERS
-  DesktopSelectionWindow.h
-  DesktopSelectionRectangle.h
   MainWindow.h
 )
 
 set(DESKTOPSTREAMER_SOURCES
-  DesktopSelectionRectangle.cpp
-  DesktopSelectionWindow.cpp
-  DesktopSelectionView.cpp
   MainWindow.cpp
   main.cpp
 )
@@ -21,6 +16,10 @@ set(DESKTOPSTREAMER_LINK_LIBRARIES
   Qt5::Core
   Qt5::Widgets
 )
+
+if(APPLE)
+  list(APPEND DESKTOPSTREAMER_LINK_LIBRARIES Qt5::MacExtras)
+endif()
 
 if(DEFLECT_USE_SERVUS)
   list(APPEND DESKTOPSTREAMER_LINK_LIBRARIES Servus)

@@ -68,15 +68,11 @@ protected:
 
 private slots:
     void _shareDesktop( bool set );
-    void _showDesktopSelectionWindow( bool set );
 
     void _update();
 #ifdef DEFLECT_USE_SERVUS
     void _updateServus();
 #endif
-
-    void _setCoordinates( QRect coordinates );
-    void _updateCoordinates();
 
     void _onStreamEventsBoxClicked( bool checked );
     void _openAboutWidget();
@@ -84,41 +80,27 @@ private slots:
 private:
     deflect::Stream* _stream;
 
-    DesktopSelectionWindow* _desktopSelectionWindow;
-
     /** @name User Interface Elements */
     //@{
     QLineEdit _hostnameLineEdit;
-    QLineEdit _uriLineEdit;
-    QSpinBox _xSpinBox;
-    QSpinBox _ySpinBox;
-    QSpinBox _widthSpinBox;
-    QSpinBox _heightSpinBox;
+    QLineEdit _streamNameLineEdit;
     QSpinBox _frameRateSpinBox;
     QLabel _frameRateLabel;
     QCheckBox _streamEventsBox;
 
     QAction* _shareDesktopAction;
-    QAction* _showDesktopSelectionWindowAction;
-    //@}
-
-    /** @name Status */
-    //@{
-    int _x;
-    int _y;
-    int _width;
-    int _height;
     //@}
 
     QImage _cursor;
-
     QTimer _updateTimer;
+    QRect _windowRect;
 
     // used for frame rate calculations
     std::vector<QTime> _frameSentTimes;
 
 #ifdef __APPLE__
     AppNapSuspender _napSuspender;
+    QListView _listView;
 #endif
 #ifdef DEFLECT_USE_SERVUS
     QTimer _browseTimer;

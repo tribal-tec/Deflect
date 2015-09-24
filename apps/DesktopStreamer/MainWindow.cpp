@@ -38,9 +38,6 @@
 
 #include "MainWindow.h"
 
-#include "DesktopSelectionWindow.h"
-#include "DesktopSelectionRectangle.h"
-
 #include <deflect/Server.h>
 #include <deflect/Stream.h>
 #include <deflect/version.h>
@@ -56,6 +53,7 @@ typedef __int32 int32_t;
 #endif
 
 #ifdef __APPLE__
+#  include <QtMac>
 #  define STREAM_EVENTS_SUPPORTED TRUE
 #  if MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_9
 #    include <CoreGraphics/CoreGraphics.h>
@@ -68,30 +66,165 @@ typedef __int32 int32_t;
 #define SERVUS_BROWSE_DELAY           100
 #define FRAME_RATE_AVERAGE_NUM_FRAMES  10
 
-#define DEFAULT_HOST_ADDRESS  "bbpav02.epfl.ch"
+#define DEFAULT_HOST_ADDRESS  "128.178.97.206"
 #define CURSOR_IMAGE_FILE     ":/cursor.png"
+
+namespace
+{
+QString getUserName()
+{
+    QString name = qgetenv( "USER" );
+    if( name.isEmpty( ))
+        name = qgetenv( "USERNAME" );
+    return name;
+}
+
+#ifdef __APPLE__
+QString cFStringToQString( CFStringRef cfString )
+{
+    if( !cfString )
+        return QString();
+
+    const CFIndex length = 2 * (CFStringGetLength(cfString) + 1);
+    char* buffer = new char[length];
+
+    QString result;
+    if( CFStringGetCString( cfString, buffer, length, kCFStringEncodingUTF8 ))
+        result = QString::fromUtf8( buffer );
+    else
+        qWarning( "CFString conversion failed." );
+    delete buffer;
+    return result;
+}
+
+const int previewImageHeight = 100;
+
+QPixmap getPreviewPixmap( const QPixmap& pixmap )
+{
+    return QPixmap::fromImage( pixmap.toImage().scaledToHeight(
+                                previewImageHeight, Qt::SmoothTransformation ));
+}
+
+QPixmap getWindowPixmap( const long windowID )
+{
+    const CGImageRef windowImage =
+            CGWindowListCreateImage( CGRectNull,
+                                     kCGWindowListOptionIncludingWindow,
+                                     windowID,
+                                     kCGWindowImageBoundsIgnoreFraming );
+
+    return QtMac::fromCGImageRef( windowImage );
+}
+
+QRect getWindowRect( const long windowID )
+{
+    long windowids[1] = {windowID};
+    const CFArrayRef windowIDs = CFArrayCreate( kCFAllocatorDefault,
+                                         (const void **)windowids, 1, nullptr );
+    CFArrayRef windowList = CGWindowListCreateDescriptionFromArray( windowIDs );
+    CFRelease( windowIDs );
+
+    if( CFArrayGetCount( windowList ) == 0 )
+        return QRect();
+
+    const CFDictionaryRef info =
+            (CFDictionaryRef)CFArrayGetValueAtIndex( windowList, 0 );
+    CFDictionaryRef bounds = (CFDictionaryRef)CFDictionaryGetValue( info,
+                                                              kCGWindowBounds );
+    CGRect rect;
+    CGRectMakeWithDictionaryRepresentation( bounds, &rect );
+    CFRelease( windowList );
+
+    return QRect( CGRectGetMinX( rect ), CGRectGetMinY( rect ),
+                  CGRectGetWidth( rect ), CGRectGetHeight( rect ));
+}
+
+class DesktopWindowsModel : public QAbstractListModel
+{
+public:
+    DesktopWindowsModel()
+        : QAbstractListModel()
+    {
+        CFArrayRef windowList =
+                CGWindowListCopyWindowInfo( kCGWindowListOptionOnScreenOnly|
+                                            kCGWindowListExcludeDesktopElements,
+                                            kCGNullWindowID );
+
+        _data.push_back( std::make_tuple( "Desktop", 0,
+            getPreviewPixmap( QApplication::primaryScreen()->grabWindow( 0 ))));
+
+        for( size_t i = 0; i < size_t(CFArrayGetCount( windowList )); ++i )
+        {
+            const CFDictionaryRef info =
+                    (CFDictionaryRef)CFArrayGetValueAtIndex( windowList, i );
+            const CFStringRef cfTitle = (CFStringRef)CFDictionaryGetValue( info,
+                                                                kCGWindowName );
+            const CFStringRef cfApp = (CFStringRef)CFDictionaryGetValue( info,
+                                                           kCGWindowOwnerName );
+            const QString title = cFStringToQString( cfTitle );
+            const QString app = cFStringToQString( cfApp );
+            if( title.isEmpty() || app == "Window Server" || app == "Dock" )
+                continue;
+
+            CFNumberRef cfWindowID = (CFNumberRef)CFDictionaryGetValue( info,
+                                                              kCGWindowNumber );
+            long windowID;
+            CFNumberGetValue( cfWindowID, kCFNumberLongType, &windowID );
+            _data.push_back( std::make_tuple( app, windowID,
+                               getPreviewPixmap( getWindowPixmap( windowID ))));
+        }
+        CFRelease( windowList );
+    }
+
+    int rowCount( const QModelIndex& ) const final
+    {
+        return int( _data.size( ));
+    }
+
+    QVariant data( const QModelIndex& index, int role ) const final
+    {
+        switch( role )
+        {
+        case Qt::DisplayRole:
+            return QString("%1").arg( std::get< APPNAME >( _data[index.row()]));
+
+        case Qt::DecorationRole:
+            return std::get< WINDOWIMAGE >( _data[index.row()] );
+
+        case Qt::UserRole:
+            return getWindowPixmap( std::get< WINDOWID >( _data[index.row()] ));
+
+        case Qt::UserRole+1:
+            return getWindowRect( std::get< WINDOWID >( _data[index.row()] ));
+
+        default:
+            return QVariant();
+        }
+    }
+
+private:
+    enum TupleValues
+    {
+        APPNAME,
+        WINDOWID,
+        WINDOWIMAGE
+    };
+
+    std::vector< std::tuple< QString, long, QPixmap > > _data;
+};
+
+#endif
+
+} // namespace
 
 MainWindow::MainWindow()
     : _stream( 0 )
-    , _desktopSelectionWindow( new DesktopSelectionWindow( ))
-    , _x( 0 )
-    , _y( 0 )
-    , _width( 0 )
-    , _height( 0 )
 #ifdef DEFLECT_USE_SERVUS
     , _servus( deflect::Server::serviceName )
 #endif
 {
     _generateCursorImage();
     _setupUI();
-
-    // Receive changes from the selection rectangle
-    connect( _desktopSelectionWindow->getSelectionRectangle(),
-             SIGNAL( coordinatesChanged( QRect )),
-             this, SLOT( _setCoordinates( QRect )));
-
-    connect( _desktopSelectionWindow, SIGNAL( windowVisible( bool )),
-             _showDesktopSelectionWindowAction, SLOT( setChecked( bool )));
 }
 
 void MainWindow::_generateCursorImage()
@@ -103,53 +236,34 @@ void MainWindow::_setupUI()
 {
     QWidget* widget = new QWidget();
     QFormLayout* formLayout = new QFormLayout();
-    widget->setLayout( formLayout );
 
     setCentralWidget( widget );
-
-    connect( &_xSpinBox, SIGNAL( editingFinished( )),
-             this, SLOT( _updateCoordinates( )));
-    connect( &_ySpinBox, SIGNAL( editingFinished( )),
-             this, SLOT( _updateCoordinates( )));
-    connect( &_widthSpinBox, SIGNAL( editingFinished( )),
-             this, SLOT( _updateCoordinates( )));
-    connect( &_heightSpinBox, SIGNAL( editingFinished( )),
-             this, SLOT( _updateCoordinates( )));
 
     _hostnameLineEdit.setText( DEFAULT_HOST_ADDRESS );
 
     char hostname[256] = { 0 };
     gethostname( hostname, 256 );
-    _uriLineEdit.setText( hostname );
-
-    const int screen = -1;
-    QRect desktopRect = QApplication::desktop()->screenGeometry( screen );
-
-    _xSpinBox.setRange( 0, desktopRect.width( ));
-    _ySpinBox.setRange( 0, desktopRect.height( ));
-    _widthSpinBox.setRange( 1, desktopRect.width( ));
-    _heightSpinBox.setRange( 1, desktopRect.height( ));
-
-    // default to full screen
-    _xSpinBox.setValue( 0 );
-    _ySpinBox.setValue( 0 );
-    _widthSpinBox.setValue( desktopRect.width( ));
-    _heightSpinBox.setValue( desktopRect.height( ));
-
-    // call updateCoordinates() to commit coordinates from the UI
-    _updateCoordinates();
+    _streamNameLineEdit.setText( QString("%1@%2").arg( getUserName( ))
+                                                 .arg( hostname ));
+#ifdef __APPLE__
+    _listView.setModel( new DesktopWindowsModel );
+    connect( &_listView, &QListView::clicked, [=](const QModelIndex& current) {
+        const QString& appname =
+                _listView.model()->data( current, Qt::DisplayRole ).toString();
+        _streamNameLineEdit.setText( QString("%1@%2").arg(appname)
+                                                     .arg(hostname)); } );
+#endif
 
     // frame rate limiting
     _frameRateSpinBox.setRange( 1, 60 );
     _frameRateSpinBox.setValue( 24 );
 
     // add widgets to UI
+#ifdef __APPLE__
+    formLayout->addRow( "Windows", &_listView );
+#endif
     formLayout->addRow( "Hostname", &_hostnameLineEdit );
-    formLayout->addRow( "Stream name", &_uriLineEdit );
-    formLayout->addRow( "X", &_xSpinBox );
-    formLayout->addRow( "Y", &_ySpinBox );
-    formLayout->addRow( "Width", &_widthSpinBox );
-    formLayout->addRow( "Height", &_heightSpinBox );
+    formLayout->addRow( "Stream name", &_streamNameLineEdit );
 #ifdef STREAM_EVENTS_SUPPORTED
     formLayout->addRow( "Allow desktop interaction", &_streamEventsBox );
     _streamEventsBox.setChecked( true );
@@ -158,6 +272,8 @@ void MainWindow::_setupUI()
 #endif
     formLayout->addRow( "Max frame rate", &_frameRateSpinBox );
     formLayout->addRow( "Actual frame rate", &_frameRateLabel );
+
+    widget->setLayout( formLayout );
 
     // share desktop action
     _shareDesktopAction = new QAction( "Share Desktop", this );
@@ -169,18 +285,8 @@ void MainWindow::_setupUI()
     connect( this, SIGNAL( streaming( bool )), _shareDesktopAction,
              SLOT( setChecked( bool )));
 
-    // show desktop selection window action
-    _showDesktopSelectionWindowAction = new QAction( "Show Rectangle", this );
-    _showDesktopSelectionWindowAction->setStatusTip(
-                "Show desktop selection rectangle" );
-    _showDesktopSelectionWindowAction->setCheckable( true );
-    _showDesktopSelectionWindowAction->setChecked( false );
-    connect( _showDesktopSelectionWindowAction, SIGNAL( triggered( bool )),
-             this, SLOT( _showDesktopSelectionWindow( bool )));
-
     QToolBar* toolbar = addToolBar( "toolbar" );
     toolbar->addAction( _shareDesktopAction );
-    toolbar->addAction( _showDesktopSelectionWindowAction );
 
     // add About dialog
     QAction* showAboutDialog = new QAction( "About", this );
@@ -205,7 +311,7 @@ void MainWindow::_startStreaming()
     if( _stream )
         return;
 
-    _stream = new deflect::Stream( _uriLineEdit.text().toStdString(),
+    _stream = new deflect::Stream( _streamNameLineEdit.text().toStdString(),
                                    _hostnameLineEdit.text().toStdString( ));
     if( !_stream->isConnected( ))
     {
@@ -251,26 +357,8 @@ void MainWindow::_handleStreamingError( const QString& errorMessage )
 
 void MainWindow::closeEvent( QCloseEvent* closeEvt )
 {
-    delete _desktopSelectionWindow;
-    _desktopSelectionWindow = 0;
-
     _stopStreaming();
-
     QMainWindow::closeEvent( closeEvt );
-}
-
-void MainWindow::_setCoordinates( const QRect coordinates )
-{
-    _xSpinBox.setValue( coordinates.x( ));
-    _ySpinBox.setValue( coordinates.y( ));
-    _widthSpinBox.setValue( coordinates.width( ));
-    _heightSpinBox.setValue( coordinates.height( ));
-
-    // the spinboxes only update the UI; we must update the actual values too
-    _x = _xSpinBox.value();
-    _y = _ySpinBox.value();
-    _width = _widthSpinBox.value();
-    _height = _heightSpinBox.value();
 }
 
 void MainWindow::_shareDesktop( const bool set )
@@ -279,14 +367,6 @@ void MainWindow::_shareDesktop( const bool set )
         _startStreaming();
     else
         _stopStreaming();
-}
-
-void MainWindow::_showDesktopSelectionWindow( const bool set )
-{
-    if( set )
-        _desktopSelectionWindow->showFullScreen();
-    else
-        _desktopSelectionWindow->hide();
 }
 
 void MainWindow::_update()
@@ -367,18 +447,31 @@ void MainWindow::_shareDesktopUpdate()
     QTime frameTime;
     frameTime.start();
 
-    const QPixmap desktopPixmap =
-        QApplication::primaryScreen()->grabWindow( 0, _x, _y, _width, _height );
+    QPixmap pixmap;
+#ifdef __APPLE__
+    if( _listView.currentIndex().row() != 0 )
+    {
+        pixmap = _listView.model()->data( _listView.currentIndex(),
+                                          Qt::UserRole ).value< QPixmap >();
+        _windowRect = _listView.model()->data( _listView.currentIndex(),
+                                              Qt::UserRole+1 ).value< QRect >();
+    }
+    else
+#endif
+    {
+        pixmap = QApplication::primaryScreen()->grabWindow( 0 );
+        _windowRect = QRect( 0, 0, pixmap.width(), pixmap.height( ));
+    }
 
-    if( desktopPixmap.isNull( ))
+    if( pixmap.isNull( ))
     {
         _handleStreamingError( "Got NULL desktop pixmap" );
         return;
     }
-    QImage image = desktopPixmap.toImage();
+    QImage image = pixmap.toImage();
 
     // render mouse cursor
-    QPoint mousePos = ( devicePixelRatio() * QCursor::pos() - QPoint( _x, _y )) -
+    QPoint mousePos = ( devicePixelRatio() * QCursor::pos() - _windowRect.topLeft()) -
                         QPoint( _cursor.width() / 2, _cursor.height() / 2 );
     QPainter painter( &image );
     painter.drawImage( mousePos, _cursor );
@@ -433,19 +526,6 @@ void MainWindow::_regulateFrameRate( const int elapsedFrameTime )
     }
 }
 
-void MainWindow::_updateCoordinates()
-{
-    _x = _xSpinBox.value();
-    _y = _ySpinBox.value();
-    _width = _widthSpinBox.value();
-    _height = _heightSpinBox.value();
-
-    _generateCursorImage();
-
-    const QRect coord( _x, _y, _width, _height );
-    _desktopSelectionWindow->getSelectionRectangle()->setCoordinates( coord );
-}
-
 void MainWindow::_onStreamEventsBoxClicked( const bool checked )
 {
     if( !checked )
@@ -481,8 +561,8 @@ void sendMouseEvent( const CGEventType type, const CGMouseButton button,
 void MainWindow::_sendMousePressEvent( const float x, const float y )
 {
     CGPoint point;
-    point.x = _x + x * _width;
-    point.y = _y + y * _height;
+    point.x = _windowRect.topLeft().x() + x * _windowRect.width();
+    point.y = _windowRect.topLeft().y() + y * _windowRect.height();
 #ifndef NDEBUG
     std::cout << "Press " << point.x << ", " << point.y << " ("
               << x << ", " << y << ")"<< std::endl;
@@ -493,8 +573,8 @@ void MainWindow::_sendMousePressEvent( const float x, const float y )
 void MainWindow::_sendMouseMoveEvent( const float x, const float y )
 {
     CGPoint point;
-    point.x = _x + x * _width;
-    point.y = _y + y * _height;
+    point.x = _windowRect.topLeft().x() + x * _windowRect.width();
+    point.y = _windowRect.topLeft().y() + y * _windowRect.height();
 #ifndef NDEBUG
     std::cout << "Move " << point.x << ", " << point.y << " ("
               << x << ", " << y << ")"<< std::endl;
@@ -505,8 +585,8 @@ void MainWindow::_sendMouseMoveEvent( const float x, const float y )
 void MainWindow::_sendMouseReleaseEvent( const float x, const float y )
 {
     CGPoint point;
-    point.x = _x + x * _width;
-    point.y = _y + y * _height;
+    point.x = _windowRect.topLeft().x() + x * _windowRect.width();
+    point.y = _windowRect.topLeft().y() + y * _windowRect.height();
 #ifndef NDEBUG
     std::cout << "Release " << point.x << ", " << point.y << " ("
               << x << ", " << y << ")"<< std::endl;
@@ -517,8 +597,8 @@ void MainWindow::_sendMouseReleaseEvent( const float x, const float y )
 void MainWindow::_sendMouseDoubleClickEvent( const float x, const float y )
 {
     CGPoint point;
-    point.x = _x + x * _width;
-    point.y = _y + y * _height;
+    point.x = _windowRect.topLeft().x() + x * _windowRect.width();
+    point.y = _windowRect.topLeft().y() + y * _windowRect.height();
     CGEventRef event = CGEventCreateMouseEvent( 0, kCGEventLeftMouseDown,
                                                 point, kCGMouseButtonLeft );
 #ifndef NDEBUG
