@@ -53,7 +53,7 @@ typedef __int32 int32_t;
 #endif
 
 #ifdef __APPLE__
-#  include <QtMac>
+#  include "DesktopWindowsModel.h"
 #  define STREAM_EVENTS_SUPPORTED TRUE
 #  if MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_9
 #    include <CoreGraphics/CoreGraphics.h>
@@ -69,153 +69,16 @@ typedef __int32 int32_t;
 #define DEFAULT_HOST_ADDRESS  "128.178.97.206"
 #define CURSOR_IMAGE_FILE     ":/cursor.png"
 
-namespace
-{
-QString getUserName()
-{
-    QString name = qgetenv( "USER" );
-    if( name.isEmpty( ))
-        name = qgetenv( "USERNAME" );
-    return name;
-}
-
-#ifdef __APPLE__
-QString cFStringToQString( CFStringRef cfString )
-{
-    if( !cfString )
-        return QString();
-
-    const CFIndex length = 2 * (CFStringGetLength(cfString) + 1);
-    char* buffer = new char[length];
-
-    QString result;
-    if( CFStringGetCString( cfString, buffer, length, kCFStringEncodingUTF8 ))
-        result = QString::fromUtf8( buffer );
-    else
-        qWarning( "CFString conversion failed." );
-    delete buffer;
-    return result;
-}
-
-const int previewImageHeight = 100;
-
-QPixmap getPreviewPixmap( const QPixmap& pixmap )
-{
-    return QPixmap::fromImage( pixmap.toImage().scaledToHeight(
-                                previewImageHeight, Qt::SmoothTransformation ));
-}
-
-QPixmap getWindowPixmap( const long windowID )
-{
-    const CGImageRef windowImage =
-            CGWindowListCreateImage( CGRectNull,
-                                     kCGWindowListOptionIncludingWindow,
-                                     windowID,
-                                     kCGWindowImageBoundsIgnoreFraming );
-
-    return QtMac::fromCGImageRef( windowImage );
-}
-
-QRect getWindowRect( const long windowID )
-{
-    long windowids[1] = {windowID};
-    const CFArrayRef windowIDs = CFArrayCreate( kCFAllocatorDefault,
-                                         (const void **)windowids, 1, nullptr );
-    CFArrayRef windowList = CGWindowListCreateDescriptionFromArray( windowIDs );
-    CFRelease( windowIDs );
-
-    if( CFArrayGetCount( windowList ) == 0 )
-        return QRect();
-
-    const CFDictionaryRef info =
-            (CFDictionaryRef)CFArrayGetValueAtIndex( windowList, 0 );
-    CFDictionaryRef bounds = (CFDictionaryRef)CFDictionaryGetValue( info,
-                                                              kCGWindowBounds );
-    CGRect rect;
-    CGRectMakeWithDictionaryRepresentation( bounds, &rect );
-    CFRelease( windowList );
-
-    return QRect( CGRectGetMinX( rect ), CGRectGetMinY( rect ),
-                  CGRectGetWidth( rect ), CGRectGetHeight( rect ));
-}
-
-class DesktopWindowsModel : public QAbstractListModel
-{
-public:
-    DesktopWindowsModel()
-        : QAbstractListModel()
-    {
-        CFArrayRef windowList =
-                CGWindowListCopyWindowInfo( kCGWindowListOptionOnScreenOnly|
-                                            kCGWindowListExcludeDesktopElements,
-                                            kCGNullWindowID );
-
-        _data.push_back( std::make_tuple( "Desktop", 0,
-            getPreviewPixmap( QApplication::primaryScreen()->grabWindow( 0 ))));
-
-        for( size_t i = 0; i < size_t(CFArrayGetCount( windowList )); ++i )
-        {
-            const CFDictionaryRef info =
-                    (CFDictionaryRef)CFArrayGetValueAtIndex( windowList, i );
-            const CFStringRef cfTitle = (CFStringRef)CFDictionaryGetValue( info,
-                                                                kCGWindowName );
-            const CFStringRef cfApp = (CFStringRef)CFDictionaryGetValue( info,
-                                                           kCGWindowOwnerName );
-            const QString title = cFStringToQString( cfTitle );
-            const QString app = cFStringToQString( cfApp );
-            if( title.isEmpty() || app == "Window Server" || app == "Dock" )
-                continue;
-
-            CFNumberRef cfWindowID = (CFNumberRef)CFDictionaryGetValue( info,
-                                                              kCGWindowNumber );
-            long windowID;
-            CFNumberGetValue( cfWindowID, kCFNumberLongType, &windowID );
-            _data.push_back( std::make_tuple( app, windowID,
-                               getPreviewPixmap( getWindowPixmap( windowID ))));
-        }
-        CFRelease( windowList );
-    }
-
-    int rowCount( const QModelIndex& ) const final
-    {
-        return int( _data.size( ));
-    }
-
-    QVariant data( const QModelIndex& index, int role ) const final
-    {
-        switch( role )
-        {
-        case Qt::DisplayRole:
-            return QString("%1").arg( std::get< APPNAME >( _data[index.row()]));
-
-        case Qt::DecorationRole:
-            return std::get< WINDOWIMAGE >( _data[index.row()] );
-
-        case Qt::UserRole:
-            return getWindowPixmap( std::get< WINDOWID >( _data[index.row()] ));
-
-        case Qt::UserRole+1:
-            return getWindowRect( std::get< WINDOWID >( _data[index.row()] ));
-
-        default:
-            return QVariant();
-        }
-    }
-
-private:
-    enum TupleValues
-    {
-        APPNAME,
-        WINDOWID,
-        WINDOWIMAGE
-    };
-
-    std::vector< std::tuple< QString, long, QPixmap > > _data;
-};
-
-#endif
-
-} // namespace
+//namespace
+//{
+//QString getUserName()
+//{
+//    QString name = qgetenv( "USER" );
+//    if( name.isEmpty( ))
+//        name = qgetenv( "USERNAME" );
+//    return name;
+//}
+//}
 
 MainWindow::MainWindow()
     : _stream( 0 )
@@ -243,15 +106,15 @@ void MainWindow::_setupUI()
 
     char hostname[256] = { 0 };
     gethostname( hostname, 256 );
-    _streamNameLineEdit.setText( QString("%1@%2").arg( getUserName( ))
-                                                 .arg( hostname ));
+    _streamNameLineEdit.setText( QString( "Desktop - %1" ).arg( hostname ));
+
 #ifdef __APPLE__
     _listView.setModel( new DesktopWindowsModel );
     connect( &_listView, &QListView::clicked, [=](const QModelIndex& current) {
-        const QString& appname =
+        const QString& windowName =
                 _listView.model()->data( current, Qt::DisplayRole ).toString();
-        _streamNameLineEdit.setText( QString("%1@%2").arg(appname)
-                                                     .arg(hostname)); } );
+        _streamNameLineEdit.setText( QString( "%1 - %2" ).arg( windowName )
+                                                         .arg( hostname )); } );
 #endif
 
     // frame rate limiting
@@ -449,7 +312,7 @@ void MainWindow::_shareDesktopUpdate()
 
     QPixmap pixmap;
 #ifdef __APPLE__
-    if( _listView.currentIndex().row() != 0 )
+    if( _listView.currentIndex().row() != DESKTOPWINDOWID )
     {
         pixmap = _listView.model()->data( _listView.currentIndex(),
                                           Qt::UserRole ).value< QPixmap >();
