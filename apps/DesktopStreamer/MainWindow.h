@@ -40,6 +40,7 @@
 #define MAIN_WINDOW_H
 
 #include <deflect/types.h>
+#include <apps/DesktopStreamer/ui_MainWindow.h>
 
 #ifdef __APPLE__
 #  include "AppNapSuspender.h"
@@ -49,19 +50,16 @@
 #  include <servus/servus.h>
 #endif
 
-#include <QtWidgets>
+#include <QMainWindow>
+#include <QTime>
+#include <QTimer>
 
-class DesktopSelectionWindow;
-
-class MainWindow : public QMainWindow
+class MainWindow : public QMainWindow, public Ui::MainWindow
 {
     Q_OBJECT
 
 public:
     MainWindow();
-
-signals:
-    void streaming( bool enabled );
 
 protected:
     void closeEvent( QCloseEvent* event ) final;
@@ -80,17 +78,6 @@ private slots:
 private:
     deflect::Stream* _stream;
 
-    /** @name User Interface Elements */
-    //@{
-    QLineEdit _hostnameLineEdit;
-    QLineEdit _streamNameLineEdit;
-    QSpinBox _frameRateSpinBox;
-    QLabel _frameRateLabel;
-    QCheckBox _streamEventsBox;
-
-    QAction* _shareDesktopAction;
-    //@}
-
     QImage _cursor;
     QTimer _updateTimer;
     QRect _windowRect;
@@ -100,15 +87,11 @@ private:
 
 #ifdef __APPLE__
     AppNapSuspender _napSuspender;
-    QListView _listView;
 #endif
 #ifdef DEFLECT_USE_SERVUS
     QTimer _browseTimer;
     servus::Servus _servus;
 #endif
-
-    void _setupUI();
-    void _generateCursorImage();
 
     void _startStreaming();
     void _stopStreaming();

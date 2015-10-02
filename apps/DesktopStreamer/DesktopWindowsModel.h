@@ -44,6 +44,7 @@
 #include <CoreGraphics/CoreGraphics.h>
 
 #include <QAbstractListModel>
+#include <QScreen>
 
 #include <tuple>
 #include <vector>
@@ -63,17 +64,17 @@ QString cFStringToQString( CFStringRef cfString )
         result = QString::fromUtf8( buffer );
     else
         qWarning( "CFString conversion failed." );
-    delete buffer;
+    delete [] buffer;
     return result;
 }
 
-const int PREVIEWIMAGEHEIGHT = 100;
+const int PREVIEWIMAGEWIDTH = 200;
 const CGWindowID DESKTOPWINDOWID = 0;
 
 QPixmap getPreviewPixmap( const QPixmap& pixmap )
 {
-    return QPixmap::fromImage( pixmap.toImage().scaledToHeight(
-                                PREVIEWIMAGEHEIGHT, Qt::SmoothTransformation ));
+    return QPixmap::fromImage( pixmap.toImage().scaledToWidth(
+                                PREVIEWIMAGEWIDTH, Qt::SmoothTransformation ));
 }
 
 QPixmap getWindowPixmap( const CGWindowID windowID )

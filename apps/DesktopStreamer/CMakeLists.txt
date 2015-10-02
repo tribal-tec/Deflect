@@ -11,6 +11,10 @@ set(DESKTOPSTREAMER_SOURCES
   main.cpp
 )
 
+set(DESKTOPSTREAMER_UI_FORMS
+  MainWindow.ui
+)
+
 set(DESKTOPSTREAMER_LINK_LIBRARIES
   Deflect
   Qt5::Core
