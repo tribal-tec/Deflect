@@ -46,6 +46,7 @@
 
 #include <QMessageBox>
 #include <QPainter>
+#include <QScreen>
 
 #ifdef _WIN32
 typedef __int32 int32_t;
@@ -56,7 +57,9 @@ typedef __int32 int32_t;
 #endif
 
 #ifdef __APPLE__
-#  include "DesktopWindowsModel.h"
+#  ifdef DEFLECT_USE_QT5MACEXTRAS
+#    include "DesktopWindowsModel.h"
+#  endif
 #  define STREAM_EVENTS_SUPPORTED TRUE
 #  if MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_9
 #    include <CoreGraphics/CoreGraphics.h>
@@ -69,19 +72,8 @@ typedef __int32 int32_t;
 #define SERVUS_BROWSE_DELAY           100
 #define FRAME_RATE_AVERAGE_NUM_FRAMES  10
 
-#define DEFAULT_HOST_ADDRESS  "128.178.97.206"
+#define DEFAULT_HOST_ADDRESS  "bbpav02.epfl.ch"
 #define CURSOR_IMAGE_FILE     ":/cursor.png"
-
-//namespace
-//{
-//QString getUserName()
-//{
-//    QString name = qgetenv( "USER" );
-//    if( name.isEmpty( ))
-//        name = qgetenv( "USERNAME" );
-//    return name;
-//}
-//}
 
 MainWindow::MainWindow()
     : _stream( 0 )
@@ -98,13 +90,18 @@ MainWindow::MainWindow()
     gethostname( hostname, 256 );
     _streamnameLineEdit->setText( QString( "Desktop - %1" ).arg( hostname ));
 
-#ifdef __APPLE__
+#ifdef DEFLECT_USE_QT5MACEXTRAS
     _listView->setModel( new DesktopWindowsModel );
-    connect( _listView, &QListView::clicked, [=]( const QModelIndex& current ) {
+    connect( _listView, &QListView::clicked, [=]( const QModelIndex& current )
+    {
         const QString& windowName =
                 _listView->model()->data( current, Qt::DisplayRole ).toString();
         _streamnameLineEdit->setText( QString( "%1 - %2" ).arg( windowName )
-                                                          .arg( hostname )); });
+                                                          .arg( hostname ));
+    });
+#else
+    _listView->setHidden( true );
+    adjustSize();
 #endif
 
     connect( _desktopInteractionCheckBox, &QCheckBox::clicked,
@@ -212,7 +209,6 @@ void MainWindow::_processStreamEvents()
         switch( wallEvent.type )
         {
         case deflect::Event::EVT_CLOSE:
-            _handleStreamingError( "Host closed stream" );
             return;
         case deflect::Event::EVT_PRESS:
             _sendMouseMoveEvent( wallEvent.mouseX, wallEvent.mouseY );
@@ -272,8 +268,8 @@ void MainWindow::_shareDesktopUpdate()
     frameTime.start();
 
     QPixmap pixmap;
-#ifdef __APPLE__
-    if( _listView->currentIndex().row() != DESKTOPWINDOWID )
+#ifdef DEFLECT_USE_QT5MACEXTRAS
+    if( _listView->currentIndex().row() > 0 )
     {
         pixmap = _listView->model()->data( _listView->currentIndex(),
                                           Qt::UserRole ).value< QPixmap >();

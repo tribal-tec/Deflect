@@ -21,11 +21,6 @@ set(DESKTOPSTREAMER_LINK_LIBRARIES
   Qt5::Widgets
 )
 
-if(APPLE)
-  set(DESKTOPSTREAMER_HEADERS DesktopWindowsModel.h)
-  list(APPEND DESKTOPSTREAMER_LINK_LIBRARIES Qt5::MacExtras)
-endif()
-
 if(DEFLECT_USE_SERVUS)
   list(APPEND DESKTOPSTREAMER_LINK_LIBRARIES Servus)
 endif()
@@ -41,6 +36,11 @@ if(APPLE)
 
   list(APPEND DESKTOPSTREAMER_SOURCES AppNapSuspender.mm)
   list(APPEND DESKTOPSTREAMER_LINK_LIBRARIES "-framework Foundation")
+  if(Qt5MacExtras_FOUND)
+    list(APPEND DESKTOPSTREAMER_SOURCES DesktopWindowsModel.mm)
+    list(APPEND DESKTOPSTREAMER_LINK_LIBRARIES
+      Qt5::MacExtras "-framework AppKit")
+  endif()
   if(OSX_VERSION VERSION_LESS 10.9)
     list(APPEND DESKTOPSTREAMER_LINK_LIBRARIES "-framework ApplicationServices")
   else()

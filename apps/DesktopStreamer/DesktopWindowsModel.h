@@ -1,5 +1,5 @@
 /*********************************************************************/
-/* Copyright (c) 20115, EPFL/Blue Brain Project                      */
+/* Copyright (c) 2015, EPFL/Blue Brain Project                       */
 /*                        Daniel Nachbaur <daniel.nachbaur@epfl.ch>  */
 /* All rights reserved.                                              */
 /*                                                                   */
@@ -40,140 +40,17 @@
 #ifndef DESKTOPWINDOWSMODEL_H
 #define DESKTOPWINDOWSMODEL_H
 
-#include <QtMac>
-#include <CoreGraphics/CoreGraphics.h>
-
 #include <QAbstractListModel>
-#include <QScreen>
-
-#include <tuple>
-#include <vector>
-
-namespace
-{
-QString cFStringToQString( CFStringRef cfString )
-{
-    if( !cfString )
-        return QString();
-
-    const CFIndex length = 2 * (CFStringGetLength(cfString) + 1);
-    char* buffer = new char[length];
-
-    QString result;
-    if( CFStringGetCString( cfString, buffer, length, kCFStringEncodingUTF8 ))
-        result = QString::fromUtf8( buffer );
-    else
-        qWarning( "CFString conversion failed." );
-    delete [] buffer;
-    return result;
-}
-
-const int PREVIEWIMAGEWIDTH = 200;
-const CGWindowID DESKTOPWINDOWID = 0;
-
-QPixmap getPreviewPixmap( const QPixmap& pixmap )
-{
-    return QPixmap::fromImage( pixmap.toImage().scaledToWidth(
-                                PREVIEWIMAGEWIDTH, Qt::SmoothTransformation ));
-}
-
-QPixmap getWindowPixmap( const CGWindowID windowID )
-{
-    const CGImageRef windowImage =
-            CGWindowListCreateImage( CGRectNull,
-                                     kCGWindowListOptionIncludingWindow,
-                                     windowID,
-                                     kCGWindowImageBoundsIgnoreFraming );
-
-    return QtMac::fromCGImageRef( windowImage );
-}
-
-QRect getWindowRect( const CGWindowID windowID )
-{
-    CGWindowID windowids[1] = { windowID };
-    const CFArrayRef windowIDs = CFArrayCreate( kCFAllocatorDefault,
-                                         (const void **)windowids, 1, nullptr );
-    CFArrayRef windowList = CGWindowListCreateDescriptionFromArray( windowIDs );
-    CFRelease( windowIDs );
-
-    if( CFArrayGetCount( windowList ) == 0 )
-        return QRect();
-
-    const CFDictionaryRef info =
-            (CFDictionaryRef)CFArrayGetValueAtIndex( windowList, 0 );
-    CFDictionaryRef bounds = (CFDictionaryRef)CFDictionaryGetValue( info,
-                                                              kCGWindowBounds );
-    CGRect rect;
-    CGRectMakeWithDictionaryRepresentation( bounds, &rect );
-    CFRelease( windowList );
-
-    return QRect( CGRectGetMinX( rect ), CGRectGetMinY( rect ),
-                  CGRectGetWidth( rect ), CGRectGetHeight( rect ));
-}
+#include <memory>
 
 class DesktopWindowsModel : public QAbstractListModel
 {
 public:
-    DesktopWindowsModel()
-        : QAbstractListModel()
-    {
-        CFArrayRef windowList =
-                CGWindowListCopyWindowInfo( kCGWindowListOptionOnScreenOnly|
-                                            kCGWindowListExcludeDesktopElements,
-                                            kCGNullWindowID );
+    DesktopWindowsModel();
 
-        _data.push_back( std::make_tuple( "Desktop", DESKTOPWINDOWID,
-            getPreviewPixmap( QApplication::primaryScreen()->grabWindow( 0 ))));
+    int rowCount( const QModelIndex& ) const final;
 
-        for( size_t i = 0; i < size_t(CFArrayGetCount( windowList )); ++i )
-        {
-            const CFDictionaryRef info =
-                    (CFDictionaryRef)CFArrayGetValueAtIndex( windowList, i );
-            const CFStringRef cfTitle = (CFStringRef)CFDictionaryGetValue( info,
-                                                                kCGWindowName );
-            const CFStringRef cfApp = (CFStringRef)CFDictionaryGetValue( info,
-                                                           kCGWindowOwnerName );
-            const QString title = cFStringToQString( cfTitle );
-            const QString app = cFStringToQString( cfApp );
-            if( title.isEmpty() || app == "Window Server" || app == "Dock" )
-                continue;
-
-            CFNumberRef cfWindowID = (CFNumberRef)CFDictionaryGetValue( info,
-                                                              kCGWindowNumber );
-            CGWindowID windowID;
-            CFNumberGetValue( cfWindowID, kCFNumberIntType, &windowID );
-            _data.push_back( std::make_tuple( app, windowID,
-                               getPreviewPixmap( getWindowPixmap( windowID ))));
-        }
-        CFRelease( windowList );
-    }
-
-    int rowCount( const QModelIndex& ) const final
-    {
-        return int( _data.size( ));
-    }
-
-    QVariant data( const QModelIndex& index, int role ) const final
-    {
-        const auto& data = _data[index.row()];
-        switch( role )
-        {
-        case Qt::DisplayRole:
-            return QString("%1").arg( std::get< APPNAME >( data ));
-
-        case Qt::DecorationRole:
-            return std::get< WINDOWIMAGE >( data );
-
-        case ROLE_PIXMAP:
-            return getWindowPixmap( std::get< WINDOWID >( data ));
-
-        case ROLE_RECT:
-            return getWindowRect( std::get< WINDOWID >( data ));
-
-        default:
-            return QVariant();
-        }
-    }
+    QVariant data( const QModelIndex& index, int role ) const final;
 
     enum DataRole
     {
@@ -181,17 +58,11 @@ public:
         ROLE_RECT
     };
 
+    void reloadData();
+
 private:
-    enum TupleValues
-    {
-        APPNAME,
-        WINDOWID,
-        WINDOWIMAGE
-    };
-
-    std::vector< std::tuple< QString, CGWindowID, QPixmap > > _data;
+    class Impl;
+    std::unique_ptr< Impl > _impl;
 };
-
-} // namespace
 
 #endif
