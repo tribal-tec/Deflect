@@ -58,14 +58,14 @@ const int PREVIEWIMAGEWIDTH = 200;
  */
 QString NSStringToQString( const NSString* nsstr )
 {
-  NSRange range;
-  range.location = 0;
-  range.length = [nsstr length];
-  unichar *chars = new unichar[range.length];
-  [nsstr getCharacters:chars range:range];
-  QString result = QString::fromUtf16( chars, range.length );
-  delete [] chars;
-  return result;
+    NSRange range;
+    range.location = 0;
+    range.length = [nsstr length];
+    unichar* chars = new unichar[range.length];
+    [nsstr getCharacters:chars range:range];
+    QString result = QString::fromUtf16( chars, range.length );
+    delete [] chars;
+    return result;
 }
 
 /**
@@ -74,7 +74,7 @@ QString NSStringToQString( const NSString* nsstr )
 NSArray* getWindows( NSRunningApplication* app, const CFArrayRef& windowList )
 {
     __block NSMutableArray* windows = [NSMutableArray array];
-    [(NSArray *)windowList enumerateObjectsWithOptions:NSEnumerationConcurrent
+    [(NSArray*)windowList enumerateObjectsWithOptions:NSEnumerationConcurrent
                            usingBlock:^( NSDictionary* info, NSUInteger, BOOL* )
     {
         const int pid = [(NSNumber*)[info objectForKey:(NSString *)kCGWindowOwnerPID] intValue];
@@ -143,11 +143,11 @@ QRect getWindowRect( const CGWindowID windowID )
     NSWorkspace *workspace = [NSWorkspace sharedWorkspace];
     NSNotificationCenter* center = [workspace notificationCenter];
     [center addObserver:self
-            selector:@selector(appsUpdated:)
+            selector:@selector(newApplication:)
             name:NSWorkspaceDidLaunchApplicationNotification
             object:Nil];
     [center addObserver:self
-            selector:@selector(appsUpdated:)
+            selector:@selector(closedApplication:)
             name:NSWorkspaceDidTerminateApplicationNotification
             object:Nil];
 
@@ -173,9 +173,18 @@ QRect getWindowRect( const CGWindowID windowID )
     parent = parent_;
 }
 
-- (void)appsUpdated:(NSNotification*)__unused notification
+- (void)newApplication:(NSNotification*) notification
 {
-    parent->reloadData();
+    NSRunningApplication* app =
+            [[notification userInfo] objectForKey:@"NSWorkspaceApplicationKey"];
+    parent->addApplication( app );
+}
+
+- (void)closedApplication:(NSNotification*) notification
+{
+    NSRunningApplication* app =
+            [[notification userInfo] objectForKey:@"NSWorkspaceApplicationKey"];
+    parent->removeApplication( app );
 }
 
 @end
@@ -204,6 +213,33 @@ public:
         WINDOWIMAGE
     };
 
+    void addApplication( NSRunningApplication* app )
+    {
+        _parent.beginResetModel();
+        for( ;; )
+        {
+            CFArrayRef windowList =
+                CGWindowListCopyWindowInfo( kCGWindowListOptionOnScreenOnly|
+                                            kCGWindowListExcludeDesktopElements,
+                                            kCGNullWindowID );
+            if( _addApplication( app, windowList ))
+                break;
+            sleep( 1 );
+        }
+        _parent.endResetModel();
+    }
+
+    void removeApplication( NSRunningApplication* app )
+    {
+        _parent.beginResetModel();
+        const QString& appName = NSStringToQString([app localizedName]);
+        const auto& i = std::find_if( _data.begin(), _data.end(),
+                                      [&]( const Data::value_type& entry )
+            { return std::get< Impl::APPNAME >( entry ) == appName; } );
+        _data.erase( i );
+        _parent.endResetModel();
+    }
+
     void reloadData()
     {
         _parent.beginResetModel();
@@ -221,50 +257,57 @@ public:
             getPreviewPixmap( QApplication::primaryScreen()->grabWindow( 0 ))));
 
         for( NSRunningApplication* app in runningApplications )
-        {
-            const QString& appName = NSStringToQString([app localizedName]);
-            const auto& pid = [app processIdentifier];
-            if( appName == "SystemUIServer" || appName == "Dock" ||
-                pid == QApplication::applicationPid( ))
-            {
-                continue;
-            }
-
-            NSArray* windows = getWindows( app, windowList );
-
-            for( NSDictionary* info in windows )
-            {
-                //NSLog( @"%@", info );
-                const QString& windowName = NSStringToQString(
-                                  [info objectForKey:(NSString*)kCGWindowName]);
-
-                const int windowLayer =
-                       [[info objectForKey:(NSString*)kCGWindowLayer] intValue];
-                const CGWindowID windowID =
-                        [[info objectForKey:(NSString*)kCGWindowNumber]
-                          unsignedIntValue];
-                const QRect& rect = getWindowRect( windowID );
-                if( rect.width() <= 1 || rect.height() <= 1 || windowLayer != 0 )
-                {
-                    if( windowName.isEmpty( ))
-                        qDebug() << "Ignoring" << appName;
-                    else
-                        qDebug() << "Ignoring" << appName << "-" << windowName;
-                    continue;
-                }
-
-                _data.push_back( std::make_tuple( appName, windowID,
-                               getPreviewPixmap( getWindowPixmap( windowID ))));
-            }
-        }
+            _addApplication( app, windowList );
 
         CFRelease( windowList );
         _parent.endResetModel();
     }
 
     DesktopWindowsModel& _parent;
-    std::vector< std::tuple< QString, CGWindowID, QPixmap > > _data;
+    typedef std::vector< std::tuple< QString, CGWindowID, QPixmap > > Data;
+    Data _data;
     AppObserver* _observer;
+
+private:
+    bool _addApplication( NSRunningApplication* app, CFArrayRef windowList )
+    {
+        const QString& appName = NSStringToQString([app localizedName]);
+        const auto& pid = [app processIdentifier];
+        if( appName == "SystemUIServer" || appName == "Dock" ||
+            pid == QApplication::applicationPid( ))
+        {
+           return true;
+        }
+
+        NSArray* windows = getWindows( app, windowList );
+
+        bool gotOne = false;
+        for( NSDictionary* info in windows )
+        {
+           const QString& windowName = NSStringToQString(
+                             [info objectForKey:(NSString*)kCGWindowName]);
+
+           const int windowLayer =
+                  [[info objectForKey:(NSString*)kCGWindowLayer] intValue];
+           const CGWindowID windowID =
+                   [[info objectForKey:(NSString*)kCGWindowNumber]
+                     unsignedIntValue];
+           const QRect& rect = getWindowRect( windowID );
+           if( rect.width() <= 1 || rect.height() <= 1 || windowLayer != 0 )
+           {
+               if( windowName.isEmpty( ))
+                   qDebug() << "Ignoring" << appName;
+               else
+                   qDebug() << "Ignoring" << appName << "-" << windowName;
+               continue;
+           }
+
+           _data.push_back( std::make_tuple( appName, windowID,
+                          getPreviewPixmap( getWindowPixmap( windowID ))));
+           gotOne = true;
+        }
+        return gotOne;
+    }
 };
 
 DesktopWindowsModel::DesktopWindowsModel()
@@ -300,7 +343,12 @@ QVariant DesktopWindowsModel::data( const QModelIndex& index, int role ) const
     }
 }
 
-void DesktopWindowsModel::reloadData()
+void DesktopWindowsModel::addApplication( void* app )
 {
-    _impl->reloadData();
+    _impl->addApplication( (NSRunningApplication*)app );
+}
+
+void DesktopWindowsModel::removeApplication( void* app )
+{
+    _impl->removeApplication( (NSRunningApplication*)app );
 }

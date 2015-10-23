@@ -58,7 +58,8 @@ public:
         ROLE_RECT
     };
 
-    void reloadData();
+    void addApplication( void* app );
+    void removeApplication( void* app );
 
 private:
     class Impl;
