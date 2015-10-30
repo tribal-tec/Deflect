@@ -60,18 +60,14 @@ class MainWindow : public QMainWindow, public Ui::MainWindow
 
 public:
     MainWindow();
+    ~MainWindow();
 
 protected:
     void closeEvent( QCloseEvent* event ) final;
 
 private slots:
     void _shareDesktop( bool set );
-
     void _update();
-#ifdef DEFLECT_USE_SERVUS
-    void _updateServus();
-#endif
-
     void _onStreamEventsBoxClicked( bool checked );
     void _openAboutWidget();
 

@@ -47,6 +47,7 @@
 #include <QMessageBox>
 #include <QPainter>
 #include <QScreen>
+#include <QStandardItemModel>
 
 #ifdef _WIN32
 typedef __int32 int32_t;
@@ -68,10 +69,15 @@ typedef __int32 int32_t;
 #  endif
 #endif
 
+#ifdef DEFLECT_USE_SERVUS
+#  include <servus/qt/itemModel.h>
+#endif
+
 #define SHARE_DESKTOP_UPDATE_DELAY      1
 #define SERVUS_BROWSE_DELAY           100
 #define FRAME_RATE_AVERAGE_NUM_FRAMES  10
 
+#define DEFAULT_HOST_NAME     "DisplayWall B1.00"
 #define DEFAULT_HOST_ADDRESS  "bbpav02.epfl.ch"
 #define CURSOR_IMAGE_FILE     ":/cursor.png"
 
@@ -84,7 +90,16 @@ MainWindow::MainWindow()
 {
     setupUi( this );
 
-    _hostnameLineEdit->setText( DEFAULT_HOST_ADDRESS );
+#ifdef DEFLECT_USE_SERVUS
+    _hostnameComboBox->setModel( new servus::qt::ItemModel( _servus,
+                                                           _hostnameComboBox ));
+    _hostnameComboBox->setCurrentIndex( 0 );
+#else
+    _hostnameComboBox->addItem( DEFAULT_HOST_NAME, DEFAULT_HOST_ADDRESS );
+#endif
+
+    connect( _hostnameComboBox, &QComboBox::currentTextChanged,
+             [&](const QString& text) { _streamButton->setEnabled( !text.isEmpty( )); });
 
     char hostname[256] = { 0 };
     gethostname( hostname, 256 );
@@ -115,12 +130,13 @@ MainWindow::MainWindow()
 
     // Update timer
     connect( &_updateTimer, &QTimer::timeout, this, &MainWindow::_update );
+}
 
+MainWindow::~MainWindow()
+{
 #ifdef DEFLECT_USE_SERVUS
-    _servus.beginBrowsing( servus::Servus::IF_ALL );
-    connect( &_browseTimer, &QTimer::timeout,
-             this, &MainWindow::_updateServus );
-    _browseTimer.start( SERVUS_BROWSE_DELAY );
+    // servus service lifetime ends before UI elements are destroyed
+    _hostnameComboBox->setModel( new QStandardItemModel( _hostnameComboBox ));
 #endif
 }
 
@@ -129,8 +145,10 @@ void MainWindow::_startStreaming()
     if( _stream )
         return;
 
+    const QString& streamHost =
+            _hostnameComboBox->currentData( Qt::UserRole ).toString();
     _stream = new deflect::Stream( _streamnameLineEdit->text().toStdString(),
-                                   _hostnameLineEdit->text().toStdString( ));
+                                   streamHost.toStdString( ));
     if( !_stream->isConnected( ))
     {
         _handleStreamingError( "Could not connect to host!" );
@@ -240,25 +258,6 @@ void MainWindow::_processStreamEvents()
     }
 }
 
-#ifdef DEFLECT_USE_SERVUS
-void MainWindow::_updateServus()
-{
-    if( _hostnameLineEdit->text() != DEFAULT_HOST_ADDRESS )
-    {
-        _browseTimer.stop();
-        return;
-    }
-
-    _servus.browse( 0 );
-    const servus::Strings& hosts = _servus.getInstances();
-    if( hosts.empty( ))
-        return;
-
-    _browseTimer.stop();
-    _hostnameLineEdit.setText( _servus.getHost( hosts.front( )).c_str( ));
-}
-#endif
-
 void MainWindow::_shareDesktopUpdate()
 {
     if( !_stream )
@@ -345,7 +344,7 @@ void MainWindow::_regulateFrameRate( const int elapsedFrameTime )
                (float)_frameSentTimes.front().msecsTo( _frameSentTimes.back( ));
 
         _statusbar->showMessage( QString( "Streaming to %1@%2 fps" )
-                             .arg( _hostnameLineEdit->text( )).arg( fps ));
+                           .arg( _hostnameComboBox->currentText( )).arg( fps ));
     }
 }
 
