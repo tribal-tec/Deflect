@@ -231,13 +231,14 @@ public:
 
     void removeApplication( NSRunningApplication* app )
     {
-        _parent.beginResetModel();
         const QString& appName = NSStringToQString([app localizedName]);
         const auto& i = std::find_if( _data.begin(), _data.end(),
                                       [&]( const Data::value_type& entry )
             { return std::get< Impl::APPNAME >( entry ) == appName; } );
+        _parent.beginRemoveRows( QModelIndex(), i - _data.begin(),
+                                 i - _data.begin( ));
         _data.erase( i );
-        _parent.endResetModel();
+        _parent.endRemoveRows();
     }
 
     void reloadData()

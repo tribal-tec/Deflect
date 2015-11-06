@@ -90,6 +90,9 @@ MainWindow::MainWindow()
 {
     setupUi( this );
 
+    connect( _hostnameComboBox, &QComboBox::currentTextChanged,
+             [&](const QString& text) { _streamButton->setEnabled( !text.isEmpty( )); });
+
 #ifdef DEFLECT_USE_SERVUS
     _hostnameComboBox->setModel( new servus::qt::ItemModel( _servus,
                                                            _hostnameComboBox ));
@@ -97,9 +100,6 @@ MainWindow::MainWindow()
 #else
     _hostnameComboBox->addItem( DEFAULT_HOST_NAME, DEFAULT_HOST_ADDRESS );
 #endif
-
-    connect( _hostnameComboBox, &QComboBox::currentTextChanged,
-             [&](const QString& text) { _streamButton->setEnabled( !text.isEmpty( )); });
 
     char hostname[256] = { 0 };
     gethostname( hostname, 256 );
@@ -114,6 +114,12 @@ MainWindow::MainWindow()
         _streamnameLineEdit->setText( QString( "%1 - %2" ).arg( windowName )
                                                           .arg( hostname ));
     });
+    connect( _listView->model(), &DesktopWindowsModel::rowsRemoved,
+             [&](const QModelIndex&, int,int )
+             {
+                if( !_windowIndex.isValid() && _stream )
+                    _stopStreaming();
+             });
 #else
     _listView->setHidden( true );
     adjustSize();
@@ -151,9 +157,19 @@ void MainWindow::_startStreaming()
                                    streamHost.toStdString( ));
     if( !_stream->isConnected( ))
     {
-        _handleStreamingError( "Could not connect to host!" );
+        _handleStreamingError( "Could not connect to host" );
         return;
     }
+
+#ifdef DEFLECT_USE_QT5MACEXTRAS
+    _windowIndex = _listView->currentIndex();
+    if( !_windowIndex.isValid( ))
+    {
+        _handleStreamingError( "No window to stream is selected" );
+        return;
+    }
+#endif
+
 #ifdef STREAM_EVENTS_SUPPORTED
     if( _desktopInteractionCheckBox->isChecked( ))
         _stream->registerForEvents();
@@ -268,12 +284,14 @@ void MainWindow::_shareDesktopUpdate()
 
     QPixmap pixmap;
 #ifdef DEFLECT_USE_QT5MACEXTRAS
-    if( _listView->currentIndex().row() > 0 )
+    if( !_windowIndex.isValid( ))
+        return;
+    if( _windowIndex.row() > 0 )
     {
-        pixmap = _listView->model()->data( _listView->currentIndex(),
-                                          Qt::UserRole ).value< QPixmap >();
-        _windowRect = _listView->model()->data( _listView->currentIndex(),
-                                              Qt::UserRole+1 ).value< QRect >();
+        pixmap = _listView->model()->data( _windowIndex,
+                                           Qt::UserRole ).value< QPixmap >();
+        _windowRect = _listView->model()->data( _windowIndex,
+                                                Qt::UserRole+1 ).value< QRect >();
     }
     else
 #endif
