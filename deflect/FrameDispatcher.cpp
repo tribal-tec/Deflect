@@ -88,11 +88,8 @@ void FrameDispatcher::addSource(const QString uri, const size_t sourceIndex)
 {
     _impl->streamBuffers[uri].addSource(sourceIndex);
 
-    if (_impl->streamBuffers[uri].getSourceCount() == 1 &&
-        _impl->observers[uri] == 0)
-    {
+    if (_impl->streamBuffers[uri].getSourceCount() == 1)
         emit pixelStreamOpened(uri);
-    }
 }
 
 void FrameDispatcher::removeSource(const QString uri, const size_t sourceIndex)
@@ -109,12 +106,8 @@ void FrameDispatcher::addObserver(const QString uri)
 {
     ++_impl->observers[uri];
 
-    if (_impl->observers[uri] == 1 &&
-        (!_impl->streamBuffers.count(uri) ||
-         _impl->streamBuffers[uri].getSourceCount() == 0))
-    {
+    if (_impl->observers[uri] == 1 && !_impl->streamBuffers.count(uri))
         emit pixelStreamOpened(uri);
-    }
 }
 
 void FrameDispatcher::removeObserver(QString uri)
