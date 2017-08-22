@@ -43,6 +43,7 @@ common_find_package(Qt5Network REQUIRED)
 common_find_package(Qt5Qml)
 common_find_package(Qt5Quick)
 common_find_package(Qt5Widgets REQUIRED)
+common_find_package(tbb)
 common_find_package_post()
 
 if(NOT Qt5Quick_VERSION VERSION_LESS 5.5)

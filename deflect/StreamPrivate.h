@@ -82,6 +82,10 @@ public:
 
     /** The worker doing all the socket send operations. */
     StreamSendWorker sendWorker;
+
+#ifdef DEFLECT_USE_TBB
+    std::future<void> _workerFuture;
+#endif
 };
 }
 #endif

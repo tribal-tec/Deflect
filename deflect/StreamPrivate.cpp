@@ -94,8 +94,12 @@ StreamPrivate::StreamPrivate(const std::string& id_, const std::string& host,
             disconnectedCallback();
     });
 
+#ifdef DEFLECT_USE_TBB
+    _workerFuture = sendWorker.async();
+#else
     socket.moveToThread(&sendWorker);
     sendWorker.start();
+#endif
 
     if (observer)
         sendWorker.enqueueObserverOpen().wait();
@@ -107,5 +111,10 @@ StreamPrivate::~StreamPrivate()
 {
     if (socket.isConnected())
         sendWorker.enqueueClose().wait();
+
+#ifdef DEFLECT_USE_TBB
+    sendWorker.stop();
+    _workerFuture.wait();
+#endif
 }
 }

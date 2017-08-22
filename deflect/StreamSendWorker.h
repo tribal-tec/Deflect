@@ -55,7 +55,10 @@
 #pragma GCC diagnostic pop
 #endif
 
+#ifdef DEFLECT_USE_TBB
+#else
 #include <QThread>
+#endif
 
 namespace deflect
 {
@@ -68,7 +71,12 @@ namespace deflect
  * thread".
  * To avoid it, the Socket must be moved to the worker thread (moveToThread()).
  */
+#ifdef DEFLECT_USE_TBB
+class StreamSendWorker
+#else
+
 class StreamSendWorker : public QThread
+#endif
 {
 public:
     /** Create a new stream worker associated to an existing socket. */
@@ -96,6 +104,10 @@ public:
     /** @sa Stream::sendData */
     Stream::Future enqueueData(QByteArray data);
 
+#ifdef DEFLECT_USE_TBB
+    std::future<void> async();
+#endif
+
 private:
     using Promise = std::promise<bool>;
     using PromisePtr = std::shared_ptr<Promise>;
@@ -120,8 +132,12 @@ private:
     bool _pendingFinish = false;
     Request _finishRequest;
 
+#ifdef DEFLECT_USE_TBB
+    void run();
+#else
     /** Main QThread loop doing asynchronous processing of queued tasks. */
     void run() final;
+#endif
 
     Stream::Future _enqueueRequest(std::vector<Task>&& actions,
                                    bool isFinish = false);

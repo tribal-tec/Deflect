@@ -47,10 +47,57 @@
 #include <iostream>
 #include <sstream>
 
+#ifdef DEFLECT_USE_TBB
+#include <tbb/task.h>
+#endif
+
 namespace
 {
 const unsigned int SEGMENT_SIZE = 512;
 const unsigned int SMALL_IMAGE_SIZE = 64;
+
+#ifdef DEFLECT_USE_TBB
+template <typename TASK_T>
+inline void schedule(TASK_T&& fcn)
+{
+    struct LocalTBBTask : public tbb::task
+    {
+        TASK_T func;
+        tbb::task* execute() override
+        {
+            func();
+            return nullptr;
+        }
+        LocalTBBTask(TASK_T&& f)
+            : func(std::forward<TASK_T>(f))
+        {
+        }
+    };
+
+    auto* tbb_node = new (tbb::task::allocate_root())
+        LocalTBBTask(std::forward<TASK_T>(fcn));
+    tbb::task::enqueue(*tbb_node);
+}
+
+template <typename TASK_T>
+using operator_return_t = typename std::result_of<TASK_T()>::type;
+
+template <typename TASK_T>
+inline auto _async(TASK_T&& fcn) -> std::future<operator_return_t<TASK_T>>
+{
+    using package_t = std::packaged_task<operator_return_t<TASK_T>()>;
+
+    auto task = new package_t(std::forward<TASK_T>(fcn));
+    auto future = task->get_future();
+
+    schedule([=]() {
+        (*task)();
+        delete task;
+    });
+
+    return future;
+}
+#endif
 }
 
 namespace deflect
@@ -65,8 +112,18 @@ StreamSendWorker::StreamSendWorker(Socket& socket, const std::string& id)
 
 StreamSendWorker::~StreamSendWorker()
 {
+#ifndef DEFLECT_USE_TBB
     stop();
+#endif
 }
+
+#ifdef DEFLECT_USE_TBB
+std::future<void> StreamSendWorker::async()
+{
+    std::cout << "JODEL" << std::endl;
+    return _async([&] { run(); });
+}
+#endif
 
 void StreamSendWorker::run()
 {
@@ -151,8 +208,10 @@ void StreamSendWorker::stop()
         _enqueueRequest(std::vector<Task>());
     }
 
+#ifndef DEFLECT_USE_TBB
     quit();
     wait();
+#endif
 
     Request request;
     while (_requests.try_dequeue(request))
