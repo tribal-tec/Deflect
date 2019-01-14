@@ -4,6 +4,7 @@
 #                     Daniel Nachbaur <daniel.nachbaur@epfl.ch>
 
 add_subdirectory(DesktopStreamer)
+add_subdirectory(SimpleReceiver)
 
 if(TARGET DeflectQt)
   add_subdirectory(QmlStreamer)
