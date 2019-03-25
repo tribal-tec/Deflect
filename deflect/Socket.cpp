@@ -53,7 +53,7 @@
 namespace
 {
 const int INVALID_NETWORK_PROTOCOL_VERSION = -1;
-const int RECEIVE_TIMEOUT_MS = 1000;
+const int RECEIVE_TIMEOUT_MS = 5000;
 }
 
 namespace deflect
@@ -70,6 +70,8 @@ Socket::Socket(const std::string& host, const unsigned short port)
     if (!qApp)
         QLoggingCategory::defaultCategory()->setEnabled(QtWarningMsg, false);
 
+    _socket->setSocketOption(QAbstractSocket::KeepAliveOption, 1);
+    _socket->setSocketOption(QAbstractSocket::LowDelayOption, 1);
     _connect(host, port);
 
     // Both objects live in the same thread, can use direct connection.
@@ -161,7 +163,7 @@ bool Socket::receive(MessageHeader& messageHeader, QByteArray& message)
 
     if (messageHeader.type == MESSAGE_TYPE_QUIT)
     {
-        _socket->disconnectFromHost();
+        //_socket->disconnectFromHost();
         return false;
     }
 
@@ -194,13 +196,13 @@ void Socket::_connect(const std::string& host, const unsigned short port)
 
     if (!_receiveProtocolVersion())
     {
-        _socket->disconnectFromHost();
+        //_socket->disconnectFromHost();
         throw std::runtime_error("server protocol version was not received");
     }
 
     if (_serverProtocolVersion < NETWORK_PROTOCOL_VERSION)
     {
-        _socket->disconnectFromHost();
+        //_socket->disconnectFromHost();
         std::stringstream ss;
         ss << "server uses unsupported protocol: " << _serverProtocolVersion
            << " < " << NETWORK_PROTOCOL_VERSION;
