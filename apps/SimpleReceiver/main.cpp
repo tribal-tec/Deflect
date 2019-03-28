@@ -44,6 +44,7 @@
 #include <QCoreApplication>
 #include <QThread>
 #include <QTime>
+#include <QTimer>
 
 #include <iostream>
 
@@ -58,31 +59,32 @@ int main(int argc, char** argv)
 
     server->connect(server, &deflect::server::Server::pixelStreamOpened,
                     [&](const QString uri_) {
-                         uri = uri_;
-                         server->requestFrame(uri);
-                     });
+                        uri = uri_;
+                        QTimer::singleShot(1000, server,
+                                           [&] { server->requestFrame(uri); });
+                    });
 
     app.connect(server, &deflect::server::Server::receivedFrame,
-                 [&](deflect::server::FramePtr) {
-                 ++currentFrame;
-                 const uint32_t smoothingInterval = 30u;
-                 if(currentFrame == smoothingInterval)
-                 {
-                     const int milliseconds = time->elapsed();
-                     const float fps = 1000.0f * smoothingInterval / (float)milliseconds;
-                     std::cout << "fps: " << fps << std::endl;
-                     currentFrame = 0u;
-                     time->restart();
-                 }
-                 server->requestFrame(uri);
-                 });
+                [&](deflect::server::FramePtr) {
+                    ++currentFrame;
+                    const uint32_t smoothingInterval = 30u;
+                    if (currentFrame == smoothingInterval)
+                    {
+                        const int milliseconds = time->elapsed();
+                        const float fps =
+                            1000.0f * smoothingInterval / (float)milliseconds;
+                        std::cout << "fps: " << fps << std::endl;
+                        currentFrame = 0u;
+                        time->restart();
+                    }
+                    server->requestFrame(uri);
+                });
 
-     app.connect(server, &deflect::server::Server::registerToEvents,
-                 [&](const QString, const bool,
-                 deflect::server::EventReceiver*,
-                 deflect::server::BoolPromisePtr success) {
-                         success->set_value(true);
-                 });
+    app.connect(server, &deflect::server::Server::registerToEvents,
+                [&](const QString, const bool, deflect::server::EventReceiver*,
+                    deflect::server::BoolPromisePtr success) {
+                    success->set_value(true);
+                });
 
     time->start();
     return app.exec();
